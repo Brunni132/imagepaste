@@ -1,3 +1,4 @@
 {
-  "image_dir_name": ""
+  "image_dir_name": "$doc_name",
+  "image_file_name": "$doc_name-$num[03]"
 }

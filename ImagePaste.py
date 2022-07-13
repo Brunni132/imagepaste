@@ -22,14 +22,28 @@ if sys.platform == 'win32':
 	from PIL import ImageFile
 	from PIL import Image
 
+def get_settings():
+	return sublime.load_settings('imagepaste.sublime-settings')
+
+def get_image_dir_name(settings):
+	return settings.get('image_dir_name', '$doc_name')
+
+def get_image_file_name(settings):
+	return settings.get('image_file_name', '$doc_name-$num[03]')
+
+# Allows $num, $num[03] (to print 001, etc.)
+def replace_num_token(in_string, value):
+	def replacement(match):
+		if match.group(2):
+			return ("%" + match.group(2) + "d") % value
+		else:
+			return str(value)
+	return re.sub('\$num(\[([\d\w]*)\])?', replacement, in_string)
+
+
 class ImageCommand(object):
 	def __init__(self, *args, **kwgs):
 		super(ImageCommand, self).__init__(*args, **kwgs)
-		self.settings = sublime.load_settings('imagepaste.sublime-settings')
-
-		# get the image save dirname
-		self.image_dir_name = self.settings.get('image_dir_name', '$file_name')
-		print("[%d] get image_dir_name: %r"%(id(self.image_dir_name), self.image_dir_name))
 
 	def run_command(self, cmd):
 		cwd = os.path.dirname(self.view.file_name())
@@ -47,20 +61,24 @@ class ImageCommand(object):
 			return outs.decode()
 
 	def get_filename(self):
+		settings = get_settings()
+		image_dir_name = get_image_dir_name(settings)
+		image_file_name = get_image_file_name(settings)
+
 		view = self.view
 		filename = view.file_name()
 		base_path = os.path.dirname(filename)
 		base_name, _ = os.path.splitext(os.path.basename(filename))
 
-		rel_path = self.image_dir_name.replace('$file_name', base_name)
+		rel_path = image_dir_name.replace('$doc_name', base_name)
 		full_path = os.path.join(base_path, rel_path)
 		if not os.path.lexists(full_path):
 			os.mkdir(full_path)
 		i = 1
 		while True:
-			# relative file path
-			rel_filename = os.path.join(rel_path, "img%03d.png" % i)
-			abs_filename = os.path.join(full_path, "img%03d.png" % i)
+			file_name = replace_num_token(image_file_name.replace('$doc_name', base_name), i) + '.png'
+			rel_filename = os.path.join(rel_path, file_name)
+			abs_filename = os.path.join(full_path, file_name)
 			if not os.path.exists(abs_filename):
 				break
 			i += 1
@@ -72,7 +90,6 @@ class ImagePasteCommand(ImageCommand, sublime_plugin.TextCommand):
 
 	def run(self, edit):
 		view = self.view
-		print("[%d] image_dir_name: %r"%(id(self.image_dir_name),self.image_dir_name))
 		rel_fn = self.paste()
 
 		if not rel_fn:
