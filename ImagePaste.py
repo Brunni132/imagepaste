@@ -28,16 +28,14 @@ class ImageCommand(object):
 		self.settings = sublime.load_settings('imagepaste.sublime-settings')
 
 		# get the image save dirname
-		self.image_dir_name = self.settings.get('image_dir_name', None)
-		if len(self.image_dir_name) == 0:
-			self.image_dir_name = None
+		self.image_dir_name = self.settings.get('image_dir_name', '$file_name')
 		print("[%d] get image_dir_name: %r"%(id(self.image_dir_name), self.image_dir_name))
 
 	def run_command(self, cmd):
 		cwd = os.path.dirname(self.view.file_name())
 		print("cmd %r" % cmd)
 		proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd, env=os.environ)
-		
+
 		try:
 		    outs, errs = proc.communicate(timeout=15)
 		    print("outs %r %r" % (outs, proc))
@@ -47,28 +45,22 @@ class ImageCommand(object):
 		print("outs %r, errs %r" % (b'\n'.join(outs.split(b'\r\n')), errs))
 		if errs is None or len(errs) == 0:
 			return outs.decode()
-		
+
 	def get_filename(self):
 		view = self.view
 		filename = view.file_name()
+		base_path = os.path.dirname(filename)
+		base_name, _ = os.path.splitext(os.path.basename(filename))
 
-		# create dir in current path with the name of current filename
-		dirname, _ = os.path.splitext(filename)
-
-		# create new image file under currentdir/filename_without_ext/filename_without_ext%d.png
-		fn_without_ext = os.path.basename(dirname)
-		if self.image_dir_name is not None:
-			subdir_name = os.path.join(os.path.split(dirname)[0], self.image_dir_name)
-		else:
-			subdir_name = dirname
-		if not os.path.lexists(subdir_name):
-			os.mkdir(subdir_name)
-		i = 0
+		rel_path = self.image_dir_name.replace('$file_name', base_name)
+		full_path = os.path.join(base_path, rel_path)
+		if not os.path.lexists(full_path):
+			os.mkdir(full_path)
+		i = 1
 		while True:
 			# relative file path
-			rel_filename = os.path.join("%s/%s%d.png" % (self.image_dir_name if self.image_dir_name else fn_without_ext, fn_without_ext, i))
-			# absolute file path
-			abs_filename = os.path.join(subdir_name, "%s%d.png" % (fn_without_ext, i))
+			rel_filename = os.path.join(rel_path, "img%03d.png" % i)
+			abs_filename = os.path.join(full_path, "img%03d.png" % i)
 			if not os.path.exists(abs_filename):
 				break
 			i += 1
@@ -94,7 +86,7 @@ class ImagePasteCommand(ImageCommand, sublime_plugin.TextCommand):
 				view.insert(edit, pos.begin(), "%s" % rel_fn)
 			# only the first cursor add the path
 			break
-			
+
 
 	def paste(self):
 		if sys.platform != 'win32':
@@ -111,7 +103,7 @@ class ImagePasteCommand(ImageCommand, sublime_plugin.TextCommand):
 			im = ImageGrab.grabclipboard()
 			if im:
 				abs_fn, rel_fn = self.get_filename()
-				im.save(abs_fn,'PNG')	
+				im.save(abs_fn,'PNG')
 				return rel_fn
 
 		print('clipboard buffer is not image!')
@@ -134,7 +126,7 @@ class ImageGrabCommand(ImageCommand, sublime_plugin.TextCommand):
 				view.insert(edit, pos.begin(), "%s" % rel_fn)
 			# only the first cursor add the path
 			break
-			
+
 
 	def paste(self):
 		# ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -157,7 +149,7 @@ class ImageGrabCommand(ImageCommand, sublime_plugin.TextCommand):
 		# im = ImageGrab.grabclipboard()
 		# if im:
 		# 	abs_fn, rel_fn = self.get_filename()
-		# 	im.save(abs_fn,'PNG')	
+		# 	im.save(abs_fn,'PNG')
 		# 	return rel_fn
 		else:
 			print('clipboard buffer is not image!')
@@ -167,7 +159,7 @@ class ImageGrabCommand(ImageCommand, sublime_plugin.TextCommand):
 class ImagePreviewCommand(ImageCommand, sublime_plugin.TextCommand):
 	def __init__(self, *args):
 	#	self.view = view
-		super(ImagePreviewCommand, self).__init__(*args)	    
+		super(ImagePreviewCommand, self).__init__(*args)
 		# self.phantom_set = sublime.PhantomSet(self.view)
 		self.displayed = False
 
