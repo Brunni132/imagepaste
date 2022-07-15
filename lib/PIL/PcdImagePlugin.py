@@ -15,17 +15,13 @@
 #
 
 
-from PIL import Image, ImageFile, _binary
-
-__version__ = "0.1"
-
-i8 = _binary.i8
-
+from . import Image, ImageFile
 
 ##
 # Image plugin for PhotoCD images.  This plugin only reads the 768x512
 # image from the file; higher resolutions are encoded in a proprietary
 # encoding.
+
 
 class PcdImageFile(ImageFile.ImageFile):
 
@@ -41,15 +37,23 @@ class PcdImageFile(ImageFile.ImageFile):
         if s[:4] != b"PCD_":
             raise SyntaxError("not a PCD file")
 
-        orientation = i8(s[1538]) & 3
+        orientation = s[1538] & 3
+        self.tile_post_rotate = None
         if orientation == 1:
-            self.tile_post_rotate = 90  # hack
+            self.tile_post_rotate = 90
         elif orientation == 3:
             self.tile_post_rotate = -90
 
         self.mode = "RGB"
-        self.size = 768, 512  # FIXME: not correct for rotated images!
-        self.tile = [("pcd", (0, 0)+self.size, 96*2048, None)]
+        self._size = 768, 512  # FIXME: not correct for rotated images!
+        self.tile = [("pcd", (0, 0) + self.size, 96 * 2048, None)]
+
+    def load_end(self):
+        if self.tile_post_rotate:
+            # Handle rotated PCDs
+            self.im = self.im.rotate(self.tile_post_rotate)
+            self._size = self.im.size
+
 
 #
 # registry

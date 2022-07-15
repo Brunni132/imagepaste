@@ -13,13 +13,11 @@
 # See the README file for information on usage and redistribution.
 #
 
-from PIL._binary import o8
+from ._binary import o8
 
 
-##
-# File handler for Teragon-style palette files.
-
-class PaletteFile(object):
+class PaletteFile:
+    """File handler for Teragon-style palette files."""
 
     rawmode = "RGB"
 
@@ -33,7 +31,7 @@ class PaletteFile(object):
 
             if not s:
                 break
-            if s[0:1] == b"#":
+            if s[:1] == b"#":
                 continue
             if len(s) > 100:
                 raise SyntaxError("bad palette file")

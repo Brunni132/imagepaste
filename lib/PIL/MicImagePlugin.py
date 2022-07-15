@@ -17,27 +17,27 @@
 #
 
 
-from PIL import Image, TiffImagePlugin
-from PIL.OleFileIO import MAGIC, OleFileIO
+import olefile
 
-__version__ = "0.1"
-
+from . import Image, TiffImagePlugin
 
 #
 # --------------------------------------------------------------------
 
 
 def _accept(prefix):
-    return prefix[:8] == MAGIC
+    return prefix[:8] == olefile.MAGIC
 
 
 ##
 # Image plugin for Microsoft's Image Composer file format.
 
+
 class MicImageFile(TiffImagePlugin.TiffImageFile):
 
     format = "MIC"
     format_description = "Microsoft Image Composer"
+    _close_exclusive_fp_after_loading = False
 
     def _open(self):
 
@@ -45,9 +45,9 @@ class MicImageFile(TiffImagePlugin.TiffImageFile):
         # to be a Microsoft Image Composer file
 
         try:
-            self.ole = OleFileIO(self.fp)
-        except IOError:
-            raise SyntaxError("not an MIC file; invalid OLE file")
+            self.ole = olefile.OleFileIO(self.fp)
+        except OSError as e:
+            raise SyntaxError("not an MIC file; invalid OLE file") from e
 
         # find ACI subfiles with Image members (maybe not the
         # best way to identify MIC files, but what the... ;-)
@@ -62,28 +62,22 @@ class MicImageFile(TiffImagePlugin.TiffImageFile):
         if not self.images:
             raise SyntaxError("not an MIC file; no image entries")
 
-        self.__fp = self.fp
-        self.frame = 0
+        self.frame = None
+        self._n_frames = len(self.images)
+        self.is_animated = self._n_frames > 1
 
         if len(self.images) > 1:
-            self.category = Image.CONTAINER
+            self._category = Image.CONTAINER
 
         self.seek(0)
 
-    @property
-    def n_frames(self):
-        return len(self.images)
-
-    @property
-    def is_animated(self):
-        return len(self.images) > 1
-
     def seek(self, frame):
-
+        if not self._seek_check(frame):
+            return
         try:
             filename = self.images[frame]
-        except IndexError:
-            raise EOFError("no such frame")
+        except IndexError as e:
+            raise EOFError("no such frame") from e
 
         self.fp = self.ole.openstream(filename)
 
@@ -92,8 +86,8 @@ class MicImageFile(TiffImagePlugin.TiffImageFile):
         self.frame = frame
 
     def tell(self):
-
         return self.frame
+
 
 #
 # --------------------------------------------------------------------

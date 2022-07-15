@@ -1,58 +1,80 @@
-#
-# The Python Imaging Library.
-# $Id$
-#
-# package placeholder
-#
-# Copyright (c) 1999 by Secret Labs AB.
-#
-# See the README file for information on usage and redistribution.
-#
+"""Pillow (Fork of the Python Imaging Library)
 
-# ;-)
+Pillow is the friendly PIL fork by Alex Clark and Contributors.
+    https://github.com/python-pillow/Pillow/
 
-VERSION = '1.1.7'  # PIL version
-PILLOW_VERSION = '3.1.1'  # Pillow
+Pillow is forked from PIL 1.1.7.
 
-_plugins = ['BmpImagePlugin',
-            'BufrStubImagePlugin',
-            'CurImagePlugin',
-            'DcxImagePlugin',
-            'EpsImagePlugin',
-            'FitsStubImagePlugin',
-            'FliImagePlugin',
-            'FpxImagePlugin',
-            'GbrImagePlugin',
-            'GifImagePlugin',
-            'GribStubImagePlugin',
-            'Hdf5StubImagePlugin',
-            'IcnsImagePlugin',
-            'IcoImagePlugin',
-            'ImImagePlugin',
-            'ImtImagePlugin',
-            'IptcImagePlugin',
-            'JpegImagePlugin',
-            'Jpeg2KImagePlugin',
-            'McIdasImagePlugin',
-            'MicImagePlugin',
-            'MpegImagePlugin',
-            'MpoImagePlugin',
-            'MspImagePlugin',
-            'PalmImagePlugin',
-            'PcdImagePlugin',
-            'PcxImagePlugin',
-            'PdfImagePlugin',
-            'PixarImagePlugin',
-            'PngImagePlugin',
-            'PpmImagePlugin',
-            'PsdImagePlugin',
-            'SgiImagePlugin',
-            'SpiderImagePlugin',
-            'SunImagePlugin',
-            'TgaImagePlugin',
-            'TiffImagePlugin',
-            'WebPImagePlugin',
-            'WmfImagePlugin',
-            'XbmImagePlugin',
-            'XpmImagePlugin',
-            'XVThumbImagePlugin']
+PIL is the Python Imaging Library by Fredrik Lundh and Contributors.
+Copyright (c) 1999 by Secret Labs AB.
+
+Use PIL.__version__ for this Pillow version.
+
+;-)
+"""
+
+from . import _version
+
+# VERSION was removed in Pillow 6.0.0.
+# PILLOW_VERSION was removed in Pillow 9.0.0.
+# Use __version__ instead.
+__version__ = _version.__version__
+del _version
+
+
+_plugins = [
+    "BlpImagePlugin",
+    "BmpImagePlugin",
+    "BufrStubImagePlugin",
+    "CurImagePlugin",
+    "DcxImagePlugin",
+    "DdsImagePlugin",
+    "EpsImagePlugin",
+    "FitsImagePlugin",
+    "FitsStubImagePlugin",
+    "FliImagePlugin",
+    "FpxImagePlugin",
+    "FtexImagePlugin",
+    "GbrImagePlugin",
+    "GifImagePlugin",
+    "GribStubImagePlugin",
+    "Hdf5StubImagePlugin",
+    "IcnsImagePlugin",
+    "IcoImagePlugin",
+    "ImImagePlugin",
+    "ImtImagePlugin",
+    "IptcImagePlugin",
+    "JpegImagePlugin",
+    "Jpeg2KImagePlugin",
+    "McIdasImagePlugin",
+    "MicImagePlugin",
+    "MpegImagePlugin",
+    "MpoImagePlugin",
+    "MspImagePlugin",
+    "PalmImagePlugin",
+    "PcdImagePlugin",
+    "PcxImagePlugin",
+    "PdfImagePlugin",
+    "PixarImagePlugin",
+    "PngImagePlugin",
+    "PpmImagePlugin",
+    "PsdImagePlugin",
+    "SgiImagePlugin",
+    "SpiderImagePlugin",
+    "SunImagePlugin",
+    "TgaImagePlugin",
+    "TiffImagePlugin",
+    "WebPImagePlugin",
+    "WmfImagePlugin",
+    "XbmImagePlugin",
+    "XpmImagePlugin",
+    "XVThumbImagePlugin",
+]
+
+
+class UnidentifiedImageError(OSError):
+    """
+    Raised in :py:meth:`PIL.Image.open` if an image cannot be opened and identified.
+    """
+
+    pass

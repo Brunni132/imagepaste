@@ -2,7 +2,7 @@
 # The Python Imaging Library
 # $Id$
 #
-# screen grabber (OS X and Windows only)
+# screen grabber
 #
 # History:
 # 2001-04-26 fl  created
@@ -15,35 +15,69 @@
 # See the README file for information on usage and redistribution.
 #
 
-from PIL import Image
-
+import os
+import shutil
+import subprocess
 import sys
-if sys.platform not in ["win32", "darwin"]:
-    raise ImportError("ImageGrab is OS X and Windows only")
+import tempfile
 
-if sys.platform == "win32":
-    grabber = Image.core.grabscreen
-elif sys.platform == "darwin":
-    import os
-    import tempfile
-    import subprocess
+from . import Image
 
 
-def grab(bbox=None):
-    if sys.platform == "darwin":
-        f, file = tempfile.mkstemp('.png')
-        os.close(f)
-        subprocess.call(['screencapture', '-x', file])
-        im = Image.open(file)
-        im.load()
-        os.unlink(file)
-    else:
-        size, data = grabber()
-        im = Image.frombytes(
-            "RGB", size, data,
-            # RGB, 32-bit line padding, origo in lower left corner
-            "raw", "BGR", (size[0]*3 + 3) & -4, -1
+def grab(bbox=None, include_layered_windows=False, all_screens=False, xdisplay=None):
+    if xdisplay is None:
+        if sys.platform == "darwin":
+            fh, filepath = tempfile.mkstemp(".png")
+            os.close(fh)
+            args = ["screencapture"]
+            if bbox:
+                left, top, right, bottom = bbox
+                args += ["-R", f"{left},{top},{right-left},{bottom-top}"]
+            subprocess.call(args + ["-x", filepath])
+            im = Image.open(filepath)
+            im.load()
+            os.unlink(filepath)
+            if bbox:
+                im_resized = im.resize((right - left, bottom - top))
+                im.close()
+                return im_resized
+            return im
+        elif sys.platform == "win32":
+            offset, size, data = Image.core.grabscreen_win32(
+                include_layered_windows, all_screens
             )
+            im = Image.frombytes(
+                "RGB",
+                size,
+                data,
+                # RGB, 32-bit line padding, origin lower left corner
+                "raw",
+                "BGR",
+                (size[0] * 3 + 3) & -4,
+                -1,
+            )
+            if bbox:
+                x0, y0 = offset
+                left, top, right, bottom = bbox
+                im = im.crop((left - x0, top - y0, right - x0, bottom - y0))
+            return im
+        elif shutil.which("gnome-screenshot"):
+            fh, filepath = tempfile.mkstemp(".png")
+            os.close(fh)
+            subprocess.call(["gnome-screenshot", "-f", filepath])
+            im = Image.open(filepath)
+            im.load()
+            os.unlink(filepath)
+            if bbox:
+                im_cropped = im.crop(bbox)
+                im.close()
+                return im_cropped
+            return im
+    # use xdisplay=None for default display on non-win32/macOS systems
+    if not Image.core.HAVE_XCB:
+        raise OSError("Pillow was built without XCB support")
+    size, data = Image.core.grabscreen_x11(xdisplay)
+    im = Image.frombytes("RGB", size, data, "raw", "BGRX", size[0] * 4, 1)
     if bbox:
         im = im.crop(bbox)
     return im
@@ -51,11 +85,51 @@ def grab(bbox=None):
 
 def grabclipboard():
     if sys.platform == "darwin":
-        raise NotImplementedError("Method is not implemented on OS X")
-    debug = 0  # temporary interface
-    data = Image.core.grabclipboard(debug)
-    if isinstance(data, bytes):
-        from PIL import BmpImagePlugin
-        import io
-        return BmpImagePlugin.DibImageFile(io.BytesIO(data))
-    return data
+        fh, filepath = tempfile.mkstemp(".jpg")
+        os.close(fh)
+        commands = [
+            'set theFile to (open for access POSIX file "'
+            + filepath
+            + '" with write permission)',
+            "try",
+            "    write (the clipboard as JPEG picture) to theFile",
+            "end try",
+            "close access theFile",
+        ]
+        script = ["osascript"]
+        for command in commands:
+            script += ["-e", command]
+        subprocess.call(script)
+
+        im = None
+        if os.stat(filepath).st_size != 0:
+            im = Image.open(filepath)
+            im.load()
+        os.unlink(filepath)
+        return im
+    elif sys.platform == "win32":
+        fmt, data = Image.core.grabclipboard_win32()
+        if fmt == "file":  # CF_HDROP
+            import struct
+
+            o = struct.unpack_from("I", data)[0]
+            if data[16] != 0:
+                files = data[o:].decode("utf-16le").split("\0")
+            else:
+                files = data[o:].decode("mbcs").split("\0")
+            return files[: files.index("")]
+        if isinstance(data, bytes):
+            import io
+
+            data = io.BytesIO(data)
+            if fmt == "png":
+                from . import PngImagePlugin
+
+                return PngImagePlugin.PngImageFile(data)
+            elif fmt == "DIB":
+                from . import BmpImagePlugin
+
+                return BmpImagePlugin.DibImageFile(data)
+        return None
+    else:
+        raise NotImplementedError("ImageGrab.grabclipboard() is macOS and Windows only")

@@ -14,17 +14,14 @@
 #
 
 
-from PIL import Image, ImageFile
-from PIL._binary import i8
-
-__version__ = "0.1"
-
+from . import Image, ImageFile
+from ._binary import i8
 
 #
 # Bitstream parser
 
-class BitStream(object):
 
+class BitStream:
     def __init__(self, fp):
         self.fp = fp
         self.bits = 0
@@ -59,6 +56,7 @@ class BitStream(object):
 # Image plugin for MPEG streams.  This plugin can identify a stream,
 # but it cannot read it.
 
+
 class MpegImageFile(ImageFile.ImageFile):
 
     format = "MPEG"
@@ -72,7 +70,7 @@ class MpegImageFile(ImageFile.ImageFile):
             raise SyntaxError("not an MPEG file")
 
         self.mode = "RGB"
-        self.size = s.read(12), s.read(12)
+        self._size = s.read(12), s.read(12)
 
 
 # --------------------------------------------------------------------
@@ -80,7 +78,6 @@ class MpegImageFile(ImageFile.ImageFile):
 
 Image.register_open(MpegImageFile.format, MpegImageFile)
 
-Image.register_extension(MpegImageFile.format, ".mpg")
-Image.register_extension(MpegImageFile.format, ".mpeg")
+Image.register_extensions(MpegImageFile.format, [".mpg", ".mpeg"])
 
 Image.register_mime(MpegImageFile.format, "video/mpeg")

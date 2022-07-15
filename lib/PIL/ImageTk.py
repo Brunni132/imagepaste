@@ -25,15 +25,11 @@
 # See the README file for information on usage and redistribution.
 #
 
-try:
-    import tkinter
-except ImportError:
-    import Tkinter
-    tkinter = Tkinter
-    del Tkinter
+import tkinter
+from io import BytesIO
 
-from PIL import Image
-
+from . import Image
+from ._deprecate import deprecate
 
 # --------------------------------------------------------------------
 # Check for Tkinter interface hooks
@@ -46,24 +42,62 @@ def _pilbitmap_check():
     if _pilbitmap_ok is None:
         try:
             im = Image.new("1", (1, 1))
-            tkinter.BitmapImage(data="PIL:%d" % im.im.id)
+            tkinter.BitmapImage(data=f"PIL:{im.im.id}")
             _pilbitmap_ok = 1
         except tkinter.TclError:
             _pilbitmap_ok = 0
     return _pilbitmap_ok
 
 
+def _get_image_from_kw(kw):
+    source = None
+    if "file" in kw:
+        source = kw.pop("file")
+    elif "data" in kw:
+        source = BytesIO(kw.pop("data"))
+    if source:
+        return Image.open(source)
+
+
+def _pyimagingtkcall(command, photo, id):
+    tk = photo.tk
+    try:
+        tk.call(command, photo, id)
+    except tkinter.TclError:
+        # activate Tkinter hook
+        # may raise an error if it cannot attach to Tkinter
+        from . import _imagingtk
+
+        try:
+            if hasattr(tk, "interp"):
+                # Required for PyPy, which always has CFFI installed
+                from cffi import FFI
+
+                ffi = FFI()
+
+                # PyPy is using an FFI CDATA element
+                # (Pdb) self.tk.interp
+                #  <cdata 'Tcl_Interp *' 0x3061b50>
+                _imagingtk.tkinit(int(ffi.cast("uintptr_t", tk.interp)), 1)
+            else:
+                _imagingtk.tkinit(tk.interpaddr(), 1)
+        except AttributeError:
+            _imagingtk.tkinit(id(tk), 0)
+        tk.call(command, photo, id)
+
+
 # --------------------------------------------------------------------
 # PhotoImage
 
-class PhotoImage(object):
+
+class PhotoImage:
     """
     A Tkinter-compatible photo image.  This can be used
     everywhere Tkinter expects an image object.  If the image is an RGBA
     image, pixels having alpha 0 are treated as transparent.
 
     The constructor takes either a PIL image, or a mode and a size.
-    Alternatively, you can use the **file** or **data** options to initialize
+    Alternatively, you can use the ``file`` or ``data`` options to initialize
     the photo image object.
 
     :param image: Either a PIL image, or a mode string.  If a mode string is
@@ -80,13 +114,7 @@ class PhotoImage(object):
 
         # Tk compatibility: file or data
         if image is None:
-            if "file" in kw:
-                image = Image.open(kw["file"])
-                del kw["file"]
-            elif "data" in kw:
-                from io import BytesIO
-                image = Image.open(BytesIO(kw["data"]))
-                del kw["data"]
+            image = _get_image_from_kw(kw)
 
         if hasattr(image, "mode") and hasattr(image, "size"):
             # got an image instead of a mode
@@ -119,7 +147,7 @@ class PhotoImage(object):
         self.__photo.name = None
         try:
             self.__photo.tk.call("image", "delete", name)
-        except:
+        except Exception:
             pass  # ignore internal errors
 
     def __str__(self):
@@ -156,10 +184,12 @@ class PhotoImage(object):
         :param im: A PIL image. The size must match the target region.  If the
                    mode does not match, the image is converted to the mode of
                    the bitmap image.
-        :param box: A 4-tuple defining the left, upper, right, and lower pixel
-                    coordinate.  If None is given instead of a tuple, all of
-                    the image is assumed.
+        :param box: Deprecated. This parameter will be removed in Pillow 10
+                    (2023-07-01).
         """
+
+        if box is not None:
+            deprecate("The box parameter", 10, None)
 
         # convert to blittable
         im.load()
@@ -170,35 +200,21 @@ class PhotoImage(object):
             block = image.new_block(self.__mode, im.size)
             image.convert2(block, image)  # convert directly between buffers
 
-        tk = self.__photo.tk
+        _pyimagingtkcall("PyImagingPhoto", self.__photo, block.id)
 
-        try:
-            tk.call("PyImagingPhoto", self.__photo, block.id)
-        except tkinter.TclError:
-            # activate Tkinter hook
-            try:
-                from PIL import _imagingtk
-                try:
-                    _imagingtk.tkinit(tk.interpaddr(), 1)
-                except AttributeError:
-                    _imagingtk.tkinit(id(tk), 0)
-                tk.call("PyImagingPhoto", self.__photo, block.id)
-            except (ImportError, AttributeError, tkinter.TclError):
-                raise  # configuration problem; cannot attach to Tkinter
 
 # --------------------------------------------------------------------
 # BitmapImage
 
 
-class BitmapImage(object):
+class BitmapImage:
     """
-
     A Tkinter-compatible bitmap image.  This can be used everywhere Tkinter
     expects an image object.
 
     The given image must have mode "1".  Pixels having value 0 are treated as
     transparent.  Options, if any, are passed on to Tkinter.  The most commonly
-    used option is **foreground**, which is used to specify the color for the
+    used option is ``foreground``, which is used to specify the color for the
     non-transparent parts.  See the Tkinter documentation for information on
     how to specify colours.
 
@@ -209,13 +225,7 @@ class BitmapImage(object):
 
         # Tk compatibility: file or data
         if image is None:
-            if "file" in kw:
-                image = Image.open(kw["file"])
-                del kw["file"]
-            elif "data" in kw:
-                from io import BytesIO
-                image = Image.open(BytesIO(kw["data"]))
-                del kw["data"]
+            image = _get_image_from_kw(kw)
 
         self.__mode = image.mode
         self.__size = image.size
@@ -223,7 +233,7 @@ class BitmapImage(object):
         if _pilbitmap_check():
             # fast way (requires the pilbitmap booster patch)
             image.load()
-            kw["data"] = "PIL:%d" % image.im.id
+            kw["data"] = f"PIL:{image.im.id}"
             self.__im = image  # must keep a reference
         else:
             # slow but safe way
@@ -235,7 +245,7 @@ class BitmapImage(object):
         self.__photo.name = None
         try:
             self.__photo.tk.call("image", "delete", name)
-        except:
+        except Exception:
             pass  # ignore internal errors
 
     def width(self):
@@ -267,13 +277,16 @@ class BitmapImage(object):
 
 def getimage(photo):
     """Copies the contents of a PhotoImage to a PIL image memory."""
-    photo.tk.call("PyImagingPhotoGet", photo)
+    im = Image.new("RGBA", (photo.width(), photo.height()))
+    block = im.im
 
+    _pyimagingtkcall("PyImagingPhotoGet", photo, block.id)
 
-# --------------------------------------------------------------------
-# Helper for the Image.show method.
+    return im
+
 
 def _show(image, title):
+    """Helper for the Image.show method."""
 
     class UI(tkinter.Label):
         def __init__(self, master, im):
@@ -281,11 +294,10 @@ def _show(image, title):
                 self.image = BitmapImage(im, foreground="white", master=master)
             else:
                 self.image = PhotoImage(im, master=master)
-            tkinter.Label.__init__(self, master, image=self.image,
-                                   bg="black", bd=0)
+            super().__init__(master, image=self.image, bg="black", bd=0)
 
     if not tkinter._default_root:
-        raise IOError("tkinter not initialized")
+        raise OSError("tkinter not initialized")
     top = tkinter.Toplevel()
     if title:
         top.title(title)

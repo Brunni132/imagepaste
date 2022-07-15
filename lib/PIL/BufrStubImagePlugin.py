@@ -9,23 +9,24 @@
 # See the README file for information on usage and redistribution.
 #
 
-from PIL import Image, ImageFile
+from . import Image, ImageFile
 
 _handler = None
 
 
-##
-# Install application-specific BUFR image handler.
-#
-# @param handler Handler object.
-
 def register_handler(handler):
+    """
+    Install application-specific BUFR image handler.
+
+    :param handler: Handler object.
+    """
     global _handler
     _handler = handler
 
 
 # --------------------------------------------------------------------
 # Image adapter
+
 
 def _accept(prefix):
     return prefix[:4] == b"BUFR" or prefix[:4] == b"ZCZC"
@@ -40,14 +41,14 @@ class BufrStubImageFile(ImageFile.StubImageFile):
 
         offset = self.fp.tell()
 
-        if not _accept(self.fp.read(8)):
+        if not _accept(self.fp.read(4)):
             raise SyntaxError("Not a BUFR file")
 
         self.fp.seek(offset)
 
         # make something up
         self.mode = "F"
-        self.size = 1, 1
+        self._size = 1, 1
 
         loader = self._load()
         if loader:
@@ -58,8 +59,8 @@ class BufrStubImageFile(ImageFile.StubImageFile):
 
 
 def _save(im, fp, filename):
-    if _handler is None or not hasattr("_handler", "save"):
-        raise IOError("BUFR save handler not installed")
+    if _handler is None or not hasattr(_handler, "save"):
+        raise OSError("BUFR save handler not installed")
     _handler.save(im, fp, filename)
 
 

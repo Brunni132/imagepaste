@@ -1,0 +1,10 @@
+[
+    {
+        "keys": ["command+v"],
+        "command": "image_paste",
+    },
+    {
+    	"keys": ["ctrl+command+m"],
+    	"command": "image_preview",
+    },
+]

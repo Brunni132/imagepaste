@@ -1,6 +1,5 @@
 #
 # The Python Imaging Library.
-# $Id$
 #
 # MSP file handling
 #
@@ -9,23 +8,30 @@
 # History:
 #       95-09-05 fl     Created
 #       97-01-03 fl     Read/write MSP images
+#       17-02-21 es     Fixed RLE interpretation
 #
 # Copyright (c) Secret Labs AB 1997.
 # Copyright (c) Fredrik Lundh 1995-97.
+# Copyright (c) Eric Soroos 2017.
 #
 # See the README file for information on usage and redistribution.
 #
+# More info on this format: https://archive.org/details/gg243631
+# Page 313:
+# Figure 205. Windows Paint Version 1: "DanM" Format
+# Figure 206. Windows Paint Version 2: "LinS" Format. Used in Windows V2.03
+#
+# See also: https://www.fileformat.info/format/mspaint/egff.htm
 
+import io
+import struct
 
-from PIL import Image, ImageFile, _binary
-
-__version__ = "0.1"
-
+from . import Image, ImageFile
+from ._binary import i16le as i16
+from ._binary import o16le as o16
 
 #
 # read MSP files
-
-i16 = _binary.i16le
 
 
 def _accept(prefix):
@@ -36,6 +42,7 @@ def _accept(prefix):
 # Image plugin for Windows MSP images.  This plugin supports both
 # uncompressed (Windows 1.0).
 
+
 class MspImageFile(ImageFile.ImageFile):
 
     format = "MSP"
@@ -45,34 +52,116 @@ class MspImageFile(ImageFile.ImageFile):
 
         # Header
         s = self.fp.read(32)
-        if s[:4] not in [b"DanM", b"LinS"]:
+        if not _accept(s):
             raise SyntaxError("not an MSP file")
 
         # Header checksum
         checksum = 0
         for i in range(0, 32, 2):
-            checksum = checksum ^ i16(s[i:i+2])
+            checksum = checksum ^ i16(s, i)
         if checksum != 0:
             raise SyntaxError("bad MSP checksum")
 
         self.mode = "1"
-        self.size = i16(s[4:]), i16(s[6:])
+        self._size = i16(s, 4), i16(s, 6)
 
         if s[:4] == b"DanM":
-            self.tile = [("raw", (0, 0)+self.size, 32, ("1", 0, 1))]
+            self.tile = [("raw", (0, 0) + self.size, 32, ("1", 0, 1))]
         else:
-            self.tile = [("msp", (0, 0)+self.size, 32+2*self.size[1], None)]
+            self.tile = [("MSP", (0, 0) + self.size, 32, None)]
+
+
+class MspDecoder(ImageFile.PyDecoder):
+    # The algo for the MSP decoder is from
+    # https://www.fileformat.info/format/mspaint/egff.htm
+    # cc-by-attribution -- That page references is taken from the
+    # Encyclopedia of Graphics File Formats and is licensed by
+    # O'Reilly under the Creative Common/Attribution license
+    #
+    # For RLE encoded files, the 32byte header is followed by a scan
+    # line map, encoded as one 16bit word of encoded byte length per
+    # line.
+    #
+    # NOTE: the encoded length of the line can be 0. This was not
+    # handled in the previous version of this encoder, and there's no
+    # mention of how to handle it in the documentation. From the few
+    # examples I've seen, I've assumed that it is a fill of the
+    # background color, in this case, white.
+    #
+    #
+    # Pseudocode of the decoder:
+    # Read a BYTE value as the RunType
+    #  If the RunType value is zero
+    #   Read next byte as the RunCount
+    #   Read the next byte as the RunValue
+    #   Write the RunValue byte RunCount times
+    #  If the RunType value is non-zero
+    #   Use this value as the RunCount
+    #   Read and write the next RunCount bytes literally
+    #
+    #  e.g.:
+    #  0x00 03 ff 05 00 01 02 03 04
+    #  would yield the bytes:
+    #  0xff ff ff 00 01 02 03 04
+    #
+    # which are then interpreted as a bit packed mode '1' image
+
+    _pulls_fd = True
+
+    def decode(self, buffer):
+
+        img = io.BytesIO()
+        blank_line = bytearray((0xFF,) * ((self.state.xsize + 7) // 8))
+        try:
+            self.fd.seek(32)
+            rowmap = struct.unpack_from(
+                f"<{self.state.ysize}H", self.fd.read(self.state.ysize * 2)
+            )
+        except struct.error as e:
+            raise OSError("Truncated MSP file in row map") from e
+
+        for x, rowlen in enumerate(rowmap):
+            try:
+                if rowlen == 0:
+                    img.write(blank_line)
+                    continue
+                row = self.fd.read(rowlen)
+                if len(row) != rowlen:
+                    raise OSError(
+                        "Truncated MSP file, expected %d bytes on row %s", (rowlen, x)
+                    )
+                idx = 0
+                while idx < rowlen:
+                    runtype = row[idx]
+                    idx += 1
+                    if runtype == 0:
+                        (runcount, runval) = struct.unpack_from("Bc", row, idx)
+                        img.write(runval * runcount)
+                        idx += 2
+                    else:
+                        runcount = runtype
+                        img.write(row[idx : idx + runcount])
+                        idx += runcount
+
+            except struct.error as e:
+                raise OSError(f"Corrupted MSP file in row {x}") from e
+
+        self.set_as_raw(img.getvalue(), ("1", 0, 1))
+
+        return -1, 0
+
+
+Image.register_decoder("MSP", MspDecoder)
+
 
 #
 # write MSP files (uncompressed only)
-
-o16 = _binary.o16le
 
 
 def _save(im, fp, filename):
 
     if im.mode != "1":
-        raise IOError("cannot write mode %s as MSP" % im.mode)
+        raise OSError(f"cannot write mode {im.mode} as MSP")
 
     # create MSP header
     header = [0] * 16
@@ -93,7 +182,8 @@ def _save(im, fp, filename):
         fp.write(o16(h))
 
     # image body
-    ImageFile._save(im, fp, [("raw", (0, 0)+im.size, 32, ("1", 0, 1))])
+    ImageFile._save(im, fp, [("raw", (0, 0) + im.size, 32, ("1", 0, 1))])
+
 
 #
 # registry

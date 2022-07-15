@@ -21,14 +21,11 @@
 # See the README file for information on usage and redistribution.
 #
 
-from PIL import Image, _binary
-from PIL.PcxImagePlugin import PcxImageFile
-
-__version__ = "0.2"
+from . import Image
+from ._binary import i32le as i32
+from .PcxImagePlugin import PcxImageFile
 
 MAGIC = 0x3ADE68B1  # QUIZ: what's this value, then?
-
-i32 = _binary.i32le
 
 
 def _accept(prefix):
@@ -38,16 +35,18 @@ def _accept(prefix):
 ##
 # Image plugin for the Intel DCX format.
 
+
 class DcxImageFile(PcxImageFile):
 
     format = "DCX"
     format_description = "Intel DCX"
+    _close_exclusive_fp_after_loading = False
 
     def _open(self):
 
         # Header
         s = self.fp.read(4)
-        if i32(s) != MAGIC:
+        if not _accept(s):
             raise SyntaxError("not a DCX file")
 
         # Component directory
@@ -58,22 +57,17 @@ class DcxImageFile(PcxImageFile):
                 break
             self._offset.append(offset)
 
-        self.__fp = self.fp
+        self._fp = self.fp
+        self.frame = None
+        self.n_frames = len(self._offset)
+        self.is_animated = self.n_frames > 1
         self.seek(0)
 
-    @property
-    def n_frames(self):
-        return len(self._offset)
-
-    @property
-    def is_animated(self):
-        return len(self._offset) > 1
-
     def seek(self, frame):
-        if frame >= len(self._offset):
-            raise EOFError("attempt to seek outside DCX directory")
+        if not self._seek_check(frame):
+            return
         self.frame = frame
-        self.fp = self.__fp
+        self.fp = self._fp
         self.fp.seek(self._offset[frame])
         PcxImageFile._open(self)
 

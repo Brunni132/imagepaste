@@ -9,17 +9,17 @@
 # See the README file for information on usage and redistribution.
 #
 
-from PIL import Image, ImageFile
+from . import Image, ImageFile
 
 _handler = None
 
 
-##
-# Install application-specific GRIB image handler.
-#
-# @param handler Handler object.
-
 def register_handler(handler):
+    """
+    Install application-specific GRIB image handler.
+
+    :param handler: Handler object.
+    """
     global _handler
     _handler = handler
 
@@ -27,8 +27,9 @@ def register_handler(handler):
 # --------------------------------------------------------------------
 # Image adapter
 
+
 def _accept(prefix):
-    return prefix[0:4] == b"GRIB" and prefix[7] == b'\x01'
+    return prefix[:4] == b"GRIB" and prefix[7] == 1
 
 
 class GribStubImageFile(ImageFile.StubImageFile):
@@ -47,7 +48,7 @@ class GribStubImageFile(ImageFile.StubImageFile):
 
         # make something up
         self.mode = "F"
-        self.size = 1, 1
+        self._size = 1, 1
 
         loader = self._load()
         if loader:
@@ -58,8 +59,8 @@ class GribStubImageFile(ImageFile.StubImageFile):
 
 
 def _save(im, fp, filename):
-    if _handler is None or not hasattr("_handler", "save"):
-        raise IOError("GRIB save handler not installed")
+    if _handler is None or not hasattr(_handler, "save"):
+        raise OSError("GRIB save handler not installed")
     _handler.save(im, fp, filename)
 
 

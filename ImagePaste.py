@@ -1,3 +1,4 @@
+from tempfile import tempdir
 import sublime
 import sublime_plugin
 import os
@@ -7,11 +8,17 @@ import subprocess
 import shutil
 from imp import reload
 
-print(sys.getdefaultencoding())
+# print(sys.getdefaultencoding())
 reload(sys)
 # sys.setdefaultencoding('utf-8')
 
-if sys.platform == 'win32':
+def is_windows():
+	return sys.platform == 'win32'
+
+def is_mac():
+	return sys.platform == 'darwin'
+
+if is_windows() or is_mac():
 	package_file = os.path.normpath(os.path.abspath(__file__))
 	package_path = os.path.dirname(package_file)
 	lib_path =  os.path.join(package_path, "lib")
@@ -31,6 +38,12 @@ def get_image_dir_name(settings):
 def get_image_file_name(settings):
 	return settings.get('image_file_name', '$doc_name-$num[03]')
 
+def add_quote_to_path(path):
+	if path[0] == '\"' or path[0] == '\'':
+		return path
+	else:
+		return '\'' + path + '\''
+
 # Allows $num, $num[03] (to print 001, etc.)
 def replace_num_token(in_string, value):
 	def replacement(match):
@@ -46,6 +59,7 @@ class ImageCommand(object):
 		super(ImageCommand, self).__init__(*args, **kwgs)
 
 	def run_command(self, cmd):
+		print('#1', cmd)
 		cwd = os.path.dirname(self.view.file_name())
 		print("cmd %r" % cmd)
 		proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd, env=os.environ)
@@ -106,9 +120,9 @@ class ImagePasteCommand(ImageCommand, sublime_plugin.TextCommand):
 
 
 	def paste(self):
-		if sys.platform != 'win32':
+		if not is_windows() and not is_mac():
 			dirname = os.path.dirname(__file__)
-			command = ['/usr/bin/python3', os.path.join(dirname, 'bin/imageutil.py'), 'save']
+			command = ['/usr/bin/python3', add_quote_to_path(os.path.join(dirname, 'bin/imageutil.py')), 'save']
 			abs_fn, rel_fn = self.get_filename()
 			command.append(abs_fn)
 
@@ -148,7 +162,7 @@ class ImageGrabCommand(ImageCommand, sublime_plugin.TextCommand):
 	def paste(self):
 		# ImageFile.LOAD_TRUNCATED_IMAGES = True
 		dirname = os.path.dirname(__file__)
-		command = ['/usr/bin/python3', os.path.join(dirname, 'bin/imageutil.py'), 'grab']
+		command = ['/usr/bin/python3', add_quote_to_path(os.path.join(dirname, 'bin/imageutil.py')), 'grab']
 		abs_fn, rel_fn = self.get_filename()
 		tempfile1 = "/tmp/imagepaste1.png"
 		command.append(tempfile1)
@@ -206,7 +220,7 @@ class ImagePreviewCommand(ImageCommand, sublime_plugin.TextCommand):
 				# print("%s = %s" % (name, file1))
 				region = tp
 
-				command = ['/usr/bin/python3', os.path.join(dirname, 'bin/imageutil.py'), 'size']
+				command = ['/usr/bin/python3', add_quote_to_path(os.path.join(dirname, 'bin/imageutil.py')), 'size']
 				command.append(file2)
 
 				out = self.run_command(" ".join(command))
