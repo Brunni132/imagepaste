@@ -509,10 +509,6 @@ class PngStream(ChunkStream):
         # 3 absolute colorimetric
 
         s = ImageFile._safe_read(self.fp, length)
-        if length < 1:
-            if ImageFile.LOAD_TRUNCATED_IMAGES:
-                return s
-            raise ValueError("Truncated sRGB chunk")
         self.im_info["srgb"] = s[0]
         return s
 
